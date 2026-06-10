@@ -1,0 +1,79 @@
+name: Branch Flow Guard
+
+on:
+  pull_request:
+    branches:
+      - uat
+      - staging
+      - prod
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+jobs:
+  enforce-flow:
+    name: Enforce Branch Promotion Flow
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR direction
+        run: |
+          SOURCE="${{ github.head_ref }}"
+          TARGET="${{ github.base_ref }}"
+
+          echo "================================================"
+          echo "  PR Raised : ${SOURCE} → ${TARGET}"
+          echo "  Allowed   : UAT → Staging → Prod (one-way)"
+          echo "================================================"
+
+          # ❌ Block: staging → uat
+          if [[ "$TARGET" == "uat" && "$SOURCE" == "staging" ]]; then
+            echo ""
+            echo "❌ BLOCKED: staging → uat is not allowed."
+            echo "   Reverse merges are prohibited."
+            echo "   Allowed flow: UAT → Staging → Prod"
+            exit 1
+          fi
+
+          # ❌ Block: prod → uat
+          if [[ "$TARGET" == "uat" && "$SOURCE" == "prod" ]]; then
+            echo ""
+            echo "❌ BLOCKED: prod → uat is not allowed."
+            echo "   Reverse merges are prohibited."
+            echo "   Allowed flow: UAT → Staging → Prod"
+            exit 1
+          fi
+
+          # ❌ Block: prod → staging
+          if [[ "$TARGET" == "staging" && "$SOURCE" == "prod" ]]; then
+            echo ""
+            echo "❌ BLOCKED: prod → staging is not allowed."
+            echo "   Reverse merges are prohibited."
+            echo "   Allowed flow: UAT → Staging → Prod"
+            exit 1
+          fi
+
+          # ❌ Block: anything other than uat → staging
+          if [[ "$TARGET" == "staging" && "$SOURCE" != "uat" ]]; then
+            echo ""
+            echo "❌ BLOCKED: '${SOURCE}' → staging is not allowed."
+            echo "   Only UAT can be merged into Staging."
+            echo "   Allowed flow: UAT → Staging → Prod"
+            exit 1
+          fi
+
+          # ❌ Block: anything other than staging → prod
+          if [[ "$TARGET" == "prod" && "$SOURCE" != "staging" ]]; then
+            echo ""
+            echo "❌ BLOCKED: '${SOURCE}' → prod is not allowed."
+            echo "   Only Staging can be merged into Prod."
+            echo "   Allowed flow: UAT → Staging → Prod"
+            echo ""
+            exit 1
+          fi
+
+          # ✅ Valid flow
+          echo ""
+          echo "✅ PASSED: '${SOURCE}' → '${TARGET}' is a valid promotion."
+          echo "   Proceeding with merge checks."
